@@ -6,6 +6,7 @@ import threading
 import smbus
 import picamera
 
+# this is a tests 
 ### Kivy Imports ###
 from kivy.properties import ObjectProperty
 from kivy.clock import Clock
