@@ -48,6 +48,7 @@ Taps_Left = 0
 Time_Running = 0
 List_Of_Values = []
 TimeArray = []
+Sensor_Duration = 5
 bus = smbus.SMBus()
 Sensor_Address = 0x04
 Sensor_Time_Interval = .025
@@ -546,14 +547,14 @@ class DropScreen(Screen):
         global Tap_Ammount 
         global Taps_Left 
         
-        Tap_interval = int(sm.get_screen('tap_screen').interval.choice)
+        Tap_Interval = int(sm.get_screen('tap_screen').interval.choice)
         Tap_Force = int(sm.get_screen('tap_screen').force.choice)
         Tap_Ammount = int(sm.get_screen('tap_screen').ammount.choice)
         
         Taps_Left = Tap_Ammount
         sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' Drops Remaining'
         
-        print(Tap_interval)
+        print(Tap_Interval)
         print(Tap_Ammount)
         print(Tap_Force)
         
@@ -600,7 +601,7 @@ class DropScreen(Screen):
             print("cleared log file")
             
         # checks for tap mode start, updates values, and runs tap mode
-        if(sm.get_screen('tap_screen').start.flag == '1'):
+        if((sm.get_screen('tap_screen').start.flag == '1') and (first_tap == True)):
             print("running soft drops")
             DropScreen.Tap_global_update(self)
             Events.manage_taps(self)
@@ -623,28 +624,6 @@ class DropScreen(Screen):
 # Events that run the machine (camera record, sensor reading, motor movement)
 class Events(Screen):
     
-    #records until cam_stop is called
-    def cam_record(self):
-        global drops_left
-        global Taps_Left
-        global start
-        
-        print('starting recording')
-        #differentiate between taps and drops
-        if (start == 1):
-            camera.annotate_text = "Drop # {}".format(drops_left)
-            camera.start_preview(fullscreen=False, window =(0,145,960,720))
-            camera.start_recording('/home/pi/Desktop/Drop # {}.h264'.format(drops_left))
-        else:
-            camera.annotate_text = "Tap # {}".format(Taps_Left)
-            camera.start_preview(fullscreen=False, window =(0,145,960,720))
-            camera.start_recording('/home/pi/Desktop/Drop # {}.h264'.format(Taps_Left))
-    
-    #stops recording
-    def cam_stop(self):
-        camera.stop_recording()
-        print('stopped recording')
-        
     #control loop for tap mode
     def manage_taps(self):
         global Tap_Interval
@@ -667,33 +646,36 @@ class Events(Screen):
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            Events.Start_Sensor_Read(self)
-            #sleep to let sensor catch up
+            Events.Read_Sensor(self) # <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
+            time.sleep(3)  #sleep to let sensor and camera catch up
             Events.lower(self)
-            #arbitrary sleep to let force take place currently
             Events.lift(self)
-            Events.Stop_Sensor_Read(self)
             Events.Save_Data(self)
-            ##sleep for an ammount to make cam record longer
+            time.sleep(3)  #sleep for an ammount to make cam record longer
             Events.cam_stop(self)
             
-            Taps_Left = Taps_left -1
-            Clock.schedule_once(Events.manage_drops, Tap_interval)
+            Taps_Left = Taps_Left -1
+            sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' taps Remaining'
+            print('taps left ' + str(Taps_Left))
+            
+            Clock.schedule_once(Events.manage_taps, Tap_Interval)
             
         elif ((first_tap == False) and (Taps_Left > 0) ):
             print ('beginning next tap')
             Events.cam_record(self)
-            Events.Start_Sensor_Read(self)
-            #sleep to catch up
+            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
+            time.sleep(3)  #sleep to let sensor and camera catch up
             Events.lower(self)
-            #arbitrary sleep
             Events.lift(self)
-            Events.Stop_Sensor_Read(self)
             Events.Save_Data(self)
-            ##sleep for an ammount to make cam record longer
+            time.sleep(3)  #sleep for an ammount to make cam record longer
             Events.cam_stop(self)
+            
             Taps_Left = Taps_Left-1
-            Clock.schedule_once(Events.manage_drops, Tap_interval)
+            sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' taps Remaining'
+            print('taps left ' + str(Taps_Left))
+            
+            Clock.schedule_once(Events.manage_taps, Tap_Interval)
         
         elif(Taps_Left == 0):
             print("Taps Complete")
@@ -701,6 +683,7 @@ class Events(Screen):
             sm.get_screen('tap_screen').start.flag = '0'
             sm.get_screen('tap_screen').start.text = 'Done / Start'
             first_tap = True
+            camera.stop_preview()
             
             # adds data to data screen preview
             with open("Sensor_Log.txt", "r+") as UploadValues:
@@ -731,15 +714,14 @@ class Events(Screen):
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            #SLEEP ##############
-            Clock.schedule_interval(Events.Start_Sensor_Read,Sensor_Time_Interval)
+            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
+            time.sleep(3)  #sleep to let sensor and camera catch up
             Events.toggle_hold_in(self)
             Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            Events.Stop_Sensor_Read(self)
-            Events.Save_Data(Self)
-            #sleep to make cam record longer #####################
+            Events.Save_Data(self)
+            time.sleep(3)  #sleep to make cam record longer
             Events.cam_stop(self)
 
             # drops left update
@@ -758,15 +740,14 @@ class Events(Screen):
             
             #drop process
             Events.cam_record(self)
-            Clock.schedule_interval(Events.Start_Sensor_Read,Sensor_Time_Interval)
-            #sleep to let cam catch up ##############
+            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
+            time.sleep(3)  #sleep to let sensor and camera catch up
             Events.toggle_hold_in(self)
             Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            Events.Stop_Sensor_Read(self)
-            Events.Save_Data(Self)
-            #sleep to make cam record longer ##########
+            Events.Save_Data(self)
+            time.sleep(3)  #sleep to make cam record longer
             Events.cam_stop(self)
             print('drop complete!')
             
@@ -787,7 +768,7 @@ class Events(Screen):
             sm.get_screen('drop_screen').label5.text = 'Done / Start'
             start = 0
             first_drop = True
-            
+            camera.stop_preview()
             # adds data to data screen preview
             with open("Sensor_Log.txt", "r+") as UploadValues:
                 f = UploadValues.readlines()
@@ -798,9 +779,56 @@ class Events(Screen):
                     sm.get_screen('data').datalabel.text += str(line) + "\n"
                     print("adding line {} to datalabel".format(count))
                 count = 0
+    
+    #records until cam_stop is called
+    def cam_record(self):
+        global drops_left
+        global Taps_Left
+        global start
+        
+        print('starting recording')
+        #differentiate between taps and drops
+        if (start == 1):
+            camera.annotate_text = "Drop # {}".format(drops_left)
+            camera.start_preview(fullscreen=False, window =(0,145,960,720))
+            camera.start_recording('/home/pi/Desktop/Drop # {}.h264'.format(drops_left))
+        else:
+            camera.annotate_text = "Tap # {}".format(Taps_Left)
+            camera.start_preview(fullscreen=False, window =(0,145,960,720))
+            camera.start_recording('/home/pi/Desktop/Tap # {}.h264'.format(Taps_Left))
+    
+    #stops recording
+    def cam_stop(self):
+        camera.stop_recording()
+        print('stopped recording')
                 
-                
+    def Read_Sensor(self):
+        # setting up variables. (sensor duration effects how long the sensor reads for)
+        global Time_Running
+        global List_Of_Values
+        global TimeArray
+        global Sensor_Duration
+        global Sensor_Time_Interval
+        global bus
+        global Sensor_Address
+        print("reading")
+        
+        # loops for DURATION seconds, reading every INTERVAL seconds
+        while True:
+            All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
+            Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
+            List_Of_Values.append(Sensor_Force_Value)
+            TimeArray.append(Time_Running)
+            time.sleep(Sensor_Time_Interval) #timestamp/frameindex?
+            Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
+            if (Time_Running > Sensor_Duration):
+                print('has been read')
+                break
+    '''
+    #figure out how to make these work as opposed to waiting to read sensor
     def Start_Sensor_Read(self):
+        #vv in main control loop
+        #Clock.schedule_interval(Events.Start_Sensor_Read(self), Sensor_Time_Interval)
         global Time_Running
         global List_Of_Values
         global TimeArray
@@ -816,7 +844,7 @@ class Events(Screen):
         
     def Stop_Sensor_Read(self):
         Clock.unschedule(Events.Start_Sensor_Read)
-        
+     '''   
         
     def Save_Data(self):
         TimeStamp= TimeArray[List_Of_Values.index(max(List_Of_Values))]
@@ -846,7 +874,7 @@ class Events(Screen):
         kit.motor1.throttle = -1.0     #engage outward
         time.sleep(1.5)
         kit.motor1.throttle = 0       #current related
-        
+        time.sleep(2) #to get positioned correctly
         #pass
         
     #pull micro actuator in
@@ -856,6 +884,7 @@ class Events(Screen):
         kit.motor1.throttle = 1.0     #engage inward
         time.sleep(1.5)
         kit.motor1.throttle = 0
+        time.sleep(2) #to get positioned correctly
 
         pass
         pass#needed? or put in toggle hold out
@@ -891,9 +920,10 @@ class Events(Screen):
 # UNCOMMENT THESE WHEN SENDING !!!
 
 #motor addresses
+'''
 kit = MotorKit()
 kit1= MotorKit(address=0x61)
-
+'''
 
 #kivy screen logic and variable names
 sm = ScreenManager()
