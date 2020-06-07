@@ -6,7 +6,6 @@ import threading
 import smbus
 import picamera
 
-# this is a tests 
 ### Kivy Imports ###
 from kivy.properties import ObjectProperty
 from kivy.clock import Clock
@@ -24,7 +23,7 @@ from kivy.graphics import Color
 from adafruit_motorkit import MotorKit
 from adafruit_motor import stepper
 
- ### Configuration of the Main window ###
+### Configuration of the Main Window ###
 from kivy.config import Config
 from kivy.core.window import Window
 Config.set('graphics', 'position', 'custom')    
@@ -34,15 +33,29 @@ Window.fullscreen = 'auto'
 kivy.require('1.11.1')
 
 ### Initializing Globals ###
+#drop globals #
 main_height = 0
 main_interval = 0
 main_drops = 0
 main_weight = 0
 drops_left = 0
+#Tap Globals#
+Tap_Interval = 0
+Tap_Force = 0
+Tap_Ammount = 0
+Taps_Left = 0
+# sensor globals #
+Time_Running = 0
+List_Of_Values = []
+TimeArray = []
+bus = smbus.SMBus()
+Sensor_Address = 0x04
+Sensor_Time_Interval = .025
 
 ### flags ###
 start = 0
 first_drop = True
+first_tap = True
 
 ### Camera Setup ###
 camera= picamera.PiCamera()
@@ -51,6 +64,7 @@ camera.framerate = 15 # 0-15
 camera.brightness = 60
 camera.contrast = 60
 #camera.start_preview(fullscreen=False, window =(100,50,1000,1000))
+# ^^ x,y,width,height, (w/h = ratio)
 
 ### Clock Timer ###
 # sets interval for start_stop (flag-check loop)
@@ -69,8 +83,7 @@ Builder.load_string("""
     font_size: 32
 
 #Boot Screen
-<HomeScreen>:
-
+<HomeScreen>
     FloatLayout:
         
         Label:
@@ -96,6 +109,7 @@ Builder.load_string("""
                 root.manager.current = 'tap_screen'
           
         Button:
+            
             text: 'Data'
             size_hint : (.5,.15)
             pos_hint : {'top':.35,'center_x':.5}
@@ -106,7 +120,12 @@ Builder.load_string("""
 #Tap Mode Screen
 <TapScreen>:
     start:start
-    duration:duration
+    interval:interval
+    ammount:ammount
+    force:force
+    tapback:tapback
+    taptimer:taptimer
+    tapleft:tapleft
     
     FloatLayout:
     
@@ -117,25 +136,62 @@ Builder.load_string("""
             pos_hint: {'center_x':.5,'top':1}
 
         Button:
-            id: duration
+            id: interval
             choice: '0'                     
             flag: '0'
             
-            text:'Experiment Duration:'
+            text:'Tap Interval:'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.75,'top':.6}
+            pos_hint:{'center_x':.9,'top':.6}
                                    
             on_press:
-                root.manager.get_screen('tap_screen').duration.flag = '1' 
-                root.manager.current = 'numpad'                   
-
+                root.manager.get_screen('tap_screen').interval.flag = '1' 
+                root.manager.current = 'numpad'
+                
+        Button:
+            id: ammount
+            choice:'0'
+            flag:'0'
+            
+            text:'Tap Ammount:'
+            font_size: 25
+            size_hint:(.2,.15)
+            pos_hint:{'center_x':.65,'top':.6}
+            
+            on_press:
+                root.manager.get_screen('tap_screen').ammount.flag = '1' 
+                root.manager.current = 'numpad'
+            
+        Button:
+            id:force
+            choice:'0'
+            flag:'0'
+            
+            text:'Force Threshold:'
+            font_size: 25
+            size_hint:(.2,.15)
+            pos_hint:{'center_x':.9,'top':.8}
+            
+            on_press:
+                root.manager.get_screen('tap_screen').force.flag = '1' 
+                root.manager.current = 'numpad'
 
         Label:
-            text: 'Time Remaining: '
+            id: tapleft
+            
+            text: 'Taps Remaining: '
             font_size: 25
             size_hint:(.669,.1)
-            pos_hint:{'center_x':.25,'top':.2}
+            pos_hint:{'center_x':.35,'top':.2}
+            
+        Label:
+            id:taptimer
+            
+            text: 'Next Tap: '
+            font_size: 25
+            size_hint:(.669,.1)
+            pos_hint:{'center_x':.15,'top':.2}
             
         Button:
             text: 'placeholder for camera preview'
@@ -149,20 +205,24 @@ Builder.load_string("""
             text: 'START'
             font_size:25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.75,'top': .8}
+            pos_hint:{'center_x':.65,'top': .8}
             
             on_press:
                 if(root.manager.get_screen('tap_screen').start.flag == '0'):root.manager.get_screen('tap_screen').start.flag = '1'; root.manager.get_screen('tap_screen').start.text = 'STOP'
                 elif(root.manager.get_screen('tap_screen').start.flag == '1'):root.manager.get_screen('tap_screen').start.flag = '0';root.manager.get_screen('tap_screen').start.text = 'START'
 
         Button:
+            id: tapback
+            flag:'0'
+            
             text: 'Data'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.6,'top':.35}
+            pos_hint:{'center_x':.65,'top':.35}
 
             on_press:
                 root.manager.current = 'data'
+                root.manager.get_screen('tap_screen').tapback.flag = '1'
 
         Button:
             text: 'Home'
@@ -172,108 +232,7 @@ Builder.load_string("""
 
             on_press:
                 root.manager.current = 'home'
-
-            
-            
-            
-            
-# NumPad (User Entry) Page
-<NumScreen>:
-
-    BoxLayout:
-        id: update_value
-        
-        padding:5
-        spacing:5
-        display: entry
-        orientation:"vertical"
-        
-        TextInput:
-            id: entry
-            
-            font_size: 40
-            multiline: False
-            size_hint:(1,.3)
-            pos_hint:{'top':1}
-
-        # Dont need position or sizing as Grid Layout maps it #
-        GridLayout:
-            id:state
-
-            padding:5
-            spacing:5
-            cols:3
-            
-            CustButton:
-                text:'7'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'8'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'9'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'4'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'5'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'6'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'1'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'2'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'3'
-                on_press: entry.text += self.text
-            CustButton:
-                text:'A/C'
-                on_press: entry.text = ''
-            CustButton:
-                text:'0'
-                on_press: entry.text += self.text
-
-            CustButton:
-                text:'ENTER'#changes depending on which flag is enabled (which button you clicked to get there)
-
-
-                on_press:
-                    # checks which flag is enabled to tell which label to add the number to
-                    
-                    #Drop Mode Height Button
-                    if((root.manager.get_screen('drop_screen').label1.flag) == '1'):root.manager.get_screen('drop_screen').label1.text = entry.text + ' cm' ; root.manager.get_screen('drop_screen').label1.choice = entry.text
-                    
-                    #Drop Mode Interval Button
-                    elif((root.manager.get_screen('drop_screen').label2.flag) == '1'):root.manager.get_screen('drop_screen').label2.text = entry.text + ' second interval' ; root.manager.get_screen('drop_screen').label2.choice = entry.text
-                    
-                    # Drop Mode Drop Number Button
-                    elif((root.manager.get_screen('drop_screen').label3.flag) == '1'):root.manager.get_screen('drop_screen').label3.text = entry.text + ' drops' ; root.manager.get_screen('drop_screen').label3.choice = entry.text
-                    
-                    # Drop Mode Weight Button
-                    elif((root.manager.get_screen('drop_screen').label4.flag) == '1'):root.manager.get_screen('drop_screen').label4.text = entry.text + ' grams' ; root.manager.get_screen('drop_screen').label4.choice = entry.text
-                    
-                    #Tap Mode Duration Button
-                    elif((root.manager.get_screen('tap_screen').duration.flag)=='1'):root.manager.get_screen('tap_screen').duration.text = entry.text + ' Second Experiment'; root.manager.get_screen('tap_screen').duration.choice = entry.text
-
-                    #
-                    if((root.manager.get_screen('tap_screen').duration.flag)=='1'): root.manager.current = 'tap_screen'
-                    elif((root.manager.get_screen('tap_screen').duration.flag)=='0'): root.manager.current = 'drop_screen'
-                    
-                    #clear flags after so you dont add number value to another box
-                    root.manager.get_screen('drop_screen').label1.flag = '0'
-                    root.manager.get_screen('drop_screen').label2.flag = '0'
-                    root.manager.get_screen('drop_screen').label3.flag = '0'
-                    root.manager.get_screen('drop_screen').label4.flag = '0'
-                    root.manager.get_screen('tap_screen').duration.flag = '0'
-
-                    #instantiate the variable for user input
-                    entry.text = ''
-
+                
 #Drop Screen
 <DropScreen>:
     label1: label1                          #height
@@ -282,6 +241,7 @@ Builder.load_string("""
     label4: label4                          #Weight
     label5: label5                          #Start
     drop:   drop
+    dropback:dropback
     
     FloatLayout:
         Label:
@@ -360,6 +320,9 @@ Builder.load_string("""
                 elif(root.manager.get_screen('drop_screen').label5.flag == '1'):root.manager.get_screen('drop_screen').label5.flag = '0';root.manager.get_screen('drop_screen').label5.text = 'START'
 
         Button:
+            id: dropback
+            flag: '0'
+            
             text: 'Data '
             font_size: 25
             size_hint:(.2,.15)
@@ -367,6 +330,7 @@ Builder.load_string("""
 
             on_press:
                 root.manager.current = 'data'
+                root.manager.get_screen('drop_screen').dropback.flag = '1'
 
         Button:
             id:label4
@@ -396,6 +360,114 @@ Builder.load_string("""
             size_hint:(.5,.6)
             pos_hint:{'center_x':.25,'top':.8}
             
+   
+   
+# NumPad (User Entry) Page
+<NumScreen>:
+
+    BoxLayout:
+        id: update_value
+        
+        padding:5
+        spacing:5
+        display: entry
+        orientation:"vertical"
+        
+        TextInput:
+            id: entry
+            
+            font_size: 40
+            multiline: False
+            size_hint:(1,.3)
+            pos_hint:{'top':1}
+
+        # Dont need position or sizing as Grid Layout maps it #
+        GridLayout:
+            id:state
+
+            padding:5
+            spacing:5
+            cols:3
+            
+            CustButton:
+                text:'7'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'8'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'9'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'4'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'5'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'6'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'1'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'2'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'3'
+                on_press: entry.text += self.text
+            CustButton:
+                text:'A/C'
+                on_press: entry.text = ''
+            CustButton:
+                text:'0'
+                on_press: entry.text += self.text
+
+            CustButton:
+                text:'ENTER'#changes depending on which flag is enabled (which button you clicked to get there)
+
+
+                on_press:
+                    # checks which flag is enabled to tell which label to add the number to
+                    
+                    #Drop Mode Height Button
+                    if((root.manager.get_screen('drop_screen').label1.flag) == '1'):root.manager.get_screen('drop_screen').label1.text = entry.text + ' cm' ; root.manager.get_screen('drop_screen').label1.choice = entry.text
+                    
+                    #Drop Mode Interval Button
+                    elif((root.manager.get_screen('drop_screen').label2.flag) == '1'):root.manager.get_screen('drop_screen').label2.text = entry.text + ' second intervals' ; root.manager.get_screen('drop_screen').label2.choice = entry.text
+                    
+                    # Drop Mode Drop Number Button
+                    elif((root.manager.get_screen('drop_screen').label3.flag) == '1'):root.manager.get_screen('drop_screen').label3.text = entry.text + ' drops' ; root.manager.get_screen('drop_screen').label3.choice = entry.text
+                    
+                    # Drop Mode Weight Button
+                    elif((root.manager.get_screen('drop_screen').label4.flag) == '1'):root.manager.get_screen('drop_screen').label4.text = entry.text + ' grams' ; root.manager.get_screen('drop_screen').label4.choice = entry.text
+                    
+                    #Tap Mode interval Button
+                    elif((root.manager.get_screen('tap_screen').interval.flag)=='1'):root.manager.get_screen('tap_screen').interval.text = entry.text + ' Second Intervals'; root.manager.get_screen('tap_screen').interval.choice = entry.text
+                    
+                    # Tap Mode Tap Ammount Button
+                    elif((root.manager.get_screen('tap_screen').ammount.flag)=='1'):root.manager.get_screen('tap_screen').ammount.text = entry.text + ' Taps'; root.manager.get_screen('tap_screen').ammount.choice = entry.text
+                   
+                    # Tap Mode Threshold Button
+                    elif((root.manager.get_screen('tap_screen').force.flag)=='1'):root.manager.get_screen('tap_screen').force.text = entry.text + ' PSI Threshold'; root.manager.get_screen('tap_screen').force.choice = entry.text
+                   
+                    # getting to last page
+                    if((root.manager.get_screen('tap_screen').interval.flag)=='1'): root.manager.current = 'tap_screen'
+                    elif((root.manager.get_screen('tap_screen').force.flag)=='1'): root.manager.current = 'tap_screen'
+                    elif((root.manager.get_screen('tap_screen').ammount.flag)=='1'): root.manager.current = 'tap_screen'
+                    else: root.manager.current = 'drop_screen'
+                    
+                    #clear flags after so you dont add number value to another box
+                    root.manager.get_screen('drop_screen').label1.flag = '0'
+                    root.manager.get_screen('drop_screen').label2.flag = '0'
+                    root.manager.get_screen('drop_screen').label3.flag = '0'
+                    root.manager.get_screen('drop_screen').label4.flag = '0'
+                    root.manager.get_screen('tap_screen').interval.flag = '0'
+                    root.manager.get_screen('tap_screen').force.flag = '0'
+                    root.manager.get_screen('tap_screen').ammount.flag = '0'
+
+                    #instantiate the variable for user input
+                    entry.text = ''
 
 #Data Screen
 <DataScreen>:
@@ -415,7 +487,11 @@ Builder.load_string("""
             text:'Return to Menu'
             size_hint:(.5,.1)
             pos_hint:{'center_x':.75,"top":.1}
-            on_press: root.manager.current = 'home'
+            
+            on_press:
+                root.manager.current = 'home'
+                root.manager.get_screen('drop_screen').dropback.flag == '0'
+                root.manager.get_screen('tap_screen').tapback.flag == '0'
 
         Button:
             text: 'Clear ALL Data'
@@ -436,8 +512,14 @@ Builder.load_string("""
             size_hint:(.5,.1)
             pos_hint:{'top':.1,'center_x':.25}
             
-            #on_press:
-                #root.manager.current = 'LAST SCREEN'
+            on_press:
+                if(root.manager.get_screen('drop_screen').dropback.flag == '1'):root.manager.current = 'drop_screen'
+                elif(root.manager.get_screen('tap_screen').tapback.flag == '1'):root.manager.current = 'tap_screen'
+                else: root.manager.current = 'home'
+                root.manager.get_screen('drop_screen').dropback.flag = '0'
+                root.manager.get_screen('tap_screen').tapback.flag = '0'
+                
+            
 """)
 ############################ Back End Functions and Scheduling ################################
 
@@ -457,8 +539,28 @@ class HomeScreen(Screen):
 
 class DropScreen(Screen):
     
-    # updates user input values
-    def global_update(self):
+    # updates input values for Tap Mode
+    def Tap_global_update(self):
+        global Tap_Interval
+        global Tap_Force
+        global Tap_Ammount 
+        global Taps_Left 
+        
+        Tap_interval = int(sm.get_screen('tap_screen').interval.choice)
+        Tap_Force = int(sm.get_screen('tap_screen').force.choice)
+        Tap_Ammount = int(sm.get_screen('tap_screen').ammount.choice)
+        
+        Taps_Left = Tap_Ammount
+        sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' Drops Remaining'
+        
+        print(Tap_interval)
+        print(Tap_Ammount)
+        print(Tap_Force)
+        
+        # ADD TIME REMAINING AND TAPS REMAINING TO SCREEN ################
+        
+    # updates input values for Drop Mode
+    def Drop_global_update(self):
         global main_height
         global main_interval
         global main_drops
@@ -471,7 +573,7 @@ class DropScreen(Screen):
         main_interval = int(sm.get_screen('drop_screen').label2.choice)
         main_drops = int(sm.get_screen('drop_screen').label3.choice)
         main_weight = int(sm.get_screen('drop_screen').label4.choice)
-
+        
         # update drop number and start lifting routine
         if(start == 0):
             drops_left = main_drops
@@ -497,27 +599,26 @@ class DropScreen(Screen):
                 DeleteValues.truncate(0)
             print("cleared log file")
             
-        # checks for tap mode start and runs tap mode
+        # checks for tap mode start, updates values, and runs tap mode
         if(sm.get_screen('tap_screen').start.flag == '1'):
-            # global update here (update values needed for soft drops)
-            # instead of below, send to a manage_soft_drops thing
             print("running soft drops")
-            Events.cam_record(self)
-            Events.Read_Sensor_Soft(self)
-            events.cam_stop(self)
+            DropScreen.Tap_global_update(self)
+            Events.manage_taps(self)
             print("ran soft drops")
             
         #checks for drop mode start, updates values, then runs drop mode
         if((sm.get_screen('drop_screen').label5.flag == '1') and (first_drop == True)):
             print("running hard drops")
-            MenuScreen.global_update(self)
+            DropScreen.Drop_global_update(self)
             Events.manage_drops(self)
             print("ran hard drops")
             
         #checks if drop mode has been activated, if not re run the loop
         elif(sm.get_screen('drop_screen').label5.flag == '0'):
             pass
-        # elif to check if sotf taps has been checked
+        # elif to check if sotf taps has been checked, if not re run
+        elif(sm.get_screen('tap_screen').start.flag == '0'):
+            pass
 
 # Events that run the machine (camera record, sensor reading, motor movement)
 class Events(Screen):
@@ -525,29 +626,104 @@ class Events(Screen):
     #records until cam_stop is called
     def cam_record(self):
         global drops_left
+        global Taps_Left
+        global start
         
         print('starting recording')
-        camera.annotate_text = "experiment # {}".format(drops_left)
-        camera.start_preview(fullscreen=False, window =(0,145,960,720))
-        camera.start_recording('/home/pi/Desktop/Drop # {}.h264'.format(drops_left)) 
+        #differentiate between taps and drops
+        if (start == 1):
+            camera.annotate_text = "Drop # {}".format(drops_left)
+            camera.start_preview(fullscreen=False, window =(0,145,960,720))
+            camera.start_recording('/home/pi/Desktop/Drop # {}.h264'.format(drops_left))
+        else:
+            camera.annotate_text = "Tap # {}".format(Taps_Left)
+            camera.start_preview(fullscreen=False, window =(0,145,960,720))
+            camera.start_recording('/home/pi/Desktop/Drop # {}.h264'.format(Taps_Left))
     
     #stops recording
     def cam_stop(self):
         camera.stop_recording()
         print('stopped recording')
         
+    #control loop for tap mode
+    def manage_taps(self):
+        global Tap_Interval
+        global Tap_Force
+        global first_tap
+        global main_height
+        global Tap_Ammount 
+        global Taps_Left 
+        
+        
+        # arbitrary height currently, later set to a force value
+        main_height = 5
+        
+        # if first tap, do process and then wait (tap interval) seconds
+        # LATER, REPLACE WITH IF LOOP BASED ON IF IT HITS A FORCE NUMBER (IF IT HITS FORCE NUMBER, PULL BACK)
+        if(first_tap):
+            first_tap = False
+            print("first tap")
+            
+            Events.cam_record(self)
+            Events.toggle_hold_out(self)
+            Events.lift(self)
+            Events.Start_Sensor_Read(self)
+            #sleep to let sensor catch up
+            Events.lower(self)
+            #arbitrary sleep to let force take place currently
+            Events.lift(self)
+            Events.Stop_Sensor_Read(self)
+            Events.Save_Data(self)
+            ##sleep for an ammount to make cam record longer
+            Events.cam_stop(self)
+            
+            Taps_Left = Taps_left -1
+            Clock.schedule_once(Events.manage_drops, Tap_interval)
+            
+        elif ((first_tap == False) and (Taps_Left > 0) ):
+            print ('beginning next tap')
+            Events.cam_record(self)
+            Events.Start_Sensor_Read(self)
+            #sleep to catch up
+            Events.lower(self)
+            #arbitrary sleep
+            Events.lift(self)
+            Events.Stop_Sensor_Read(self)
+            Events.Save_Data(self)
+            ##sleep for an ammount to make cam record longer
+            Events.cam_stop(self)
+            Taps_Left = Taps_Left-1
+            Clock.schedule_once(Events.manage_drops, Tap_interval)
+        
+        elif(Taps_Left == 0):
+            print("Taps Complete")
+            
+            sm.get_screen('tap_screen').start.flag = '0'
+            sm.get_screen('tap_screen').start.text = 'Done / Start'
+            first_tap = True
+            
+            # adds data to data screen preview
+            with open("Sensor_Log.txt", "r+") as UploadValues:
+                f = UploadValues.readlines()
+                count = 0
+                for line in f:
+                    count +=1
+
+                    sm.get_screen('data').datalabel.text += str(line) + "\n"
+                    print("adding line {} to datalabel".format(count))
+                count = 0
+            
     #control loop for Drop Mode
     def manage_drops(self):  
         global drops_left
         global first_drop
         global main_interval
+        global main_drops
         global start
-        # have to have first drop and latter drops or it would run forever
-        
-        ##################################### MAIN ACTION LOOP FOR DROP MODE ##############################
         
         #if this is the first drop, do drop process and then call this event again
         if(first_drop):
+            drops_left = main_drops
             first_drop = False
             print("First Drop")
             
@@ -555,9 +731,15 @@ class Events(Screen):
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
+            #SLEEP ##############
+            Clock.schedule_interval(Events.Start_Sensor_Read,Sensor_Time_Interval)
             Events.toggle_hold_in(self)
-            Events.Read_Sensor_Hard(self)
             Events.lower(self)
+            Events.toggle_hold_out(self)
+            Events.lift(self)
+            Events.Stop_Sensor_Read(self)
+            Events.Save_Data(Self)
+            #sleep to make cam record longer #####################
             Events.cam_stop(self)
 
             # drops left update
@@ -566,7 +748,7 @@ class Events(Screen):
             print('drops left ' + str(drops_left))
             print('first drop done\n')
             
-            #schedule this function again and get out of this if statement
+            #schedule this function again (main_interval) seconds later
             Clock.schedule_once(Events.manage_drops, main_interval)
             pass
 
@@ -576,11 +758,15 @@ class Events(Screen):
             
             #drop process
             Events.cam_record(self)
+            Clock.schedule_interval(Events.Start_Sensor_Read,Sensor_Time_Interval)
+            #sleep to let cam catch up ##############
+            Events.toggle_hold_in(self)
+            Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            Events.toggle_hold_in(self)
-            Events.Read_Sensor_Hard(self)
-            Events.lower(self)
+            Events.Stop_Sensor_Read(self)
+            Events.Save_Data(Self)
+            #sleep to make cam record longer ##########
             Events.cam_stop(self)
             print('drop complete!')
             
@@ -590,7 +776,7 @@ class Events(Screen):
             sm.get_screen('drop_screen').drop.text = str(drops_left) + ' Drops Remaining'
 
 
-            #schedule next drop and get out of if statement
+            #schedule next drop after (main interval) seconds
             Clock.schedule_once(Events.manage_drops, main_interval)
             pass
 
@@ -601,7 +787,6 @@ class Events(Screen):
             sm.get_screen('drop_screen').label5.text = 'Done / Start'
             start = 0
             first_drop = True
-            # make an upload values event that uploads to label as well as data file
             
             # adds data to data screen preview
             with open("Sensor_Log.txt", "r+") as UploadValues:
@@ -614,98 +799,46 @@ class Events(Screen):
                     print("adding line {} to datalabel".format(count))
                 count = 0
                 
-    #INSTEAD OF READ SENSOR SOFT AND HARD, MAKE READ SENSOR AND STOP READ SENSOR
                 
-    #sensor read for drop mode
-    def Read_Sensor_Hard(self):
-        # setting up variables. (sensor duration effects how long the sensor reads for)
-        DURATION = 5 # IN Seconds
-        Time_Running = 0
-        List_Of_Values = []
-        TimeArray = []
-        bus = smbus.SMBus(1)
-        Sensor_Address = 0x04
-        INTERVAL = .025
-        print("reading")
+    def Start_Sensor_Read(self):
+        global Time_Running
+        global List_Of_Values
+        global TimeArray
+        global bus
+        global Sensor_Address
+        global Sensor_Time_Interval
         
-        # loops for DURATION seconds, reading every INTERVAL seconds
-        while True:
-            All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
-            Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
-            List_Of_Values.append(Sensor_Force_Value)
-            TimeArray.append(Time_Running)
-            time.sleep(INTERVAL) #timestamp/frameindex?
-            Time_Running = round(Time_Running + INTERVAL, 3)
-
-            if (Time_Running > DURATION):
-                
-                TimeStamp= TimeArray[List_Of_Values.index(max(List_Of_Values))]
-                print("Highest Force = {}".format(max(List_Of_Values)))
-                print("writing value to log")
-                
-                #writes data values to a log file, each line = new drop
-                with open("Sensor_Log.txt", "a") as WriteValues:
-                    WriteValues.write(("Drop # = {} | Force Value = {} PSI| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Interval = {} SECONDS\n").format((main_drops - drops_left), str(max(List_Of_Values )), main_height, main_weight, TimeStamp, main_interval))
-                List_Of_Values.clear()
-                TimeArray.clear()
-                print("wrote value to log")
-                break
-            
-    #honestly just get rid of this because you misunderstood
-    #sensor read for tap mode
-    def Read_Sensor_Soft(self):
-        DURATION = int(sm.get_screen('tap_screen').duration.choice) # IN Seconds
+        All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
+        Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
+        List_Of_Values.append(Sensor_Force_Value)
+        TimeArray.append(Time_Running)
+        Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
+        
+    def Stop_Sensor_Read(self):
+        Clock.unschedule(Events.Start_Sensor_Read)
+        
+        
+    def Save_Data(self):
+        TimeStamp= TimeArray[List_Of_Values.index(max(List_Of_Values))]
+        
+        print("Highest Force = {}".format(max(List_Of_Values)))
+        print("writing value to log")
+    
+         #writes data values to a log file, each line = new drop
+        
+        if(sm.get_screen('tap_screen').start.flag == '1'):
+            with open("Sensor_Log.txt", "a") as WriteValues:
+                WriteValues.write(("Tap Mode: Tap # = {} | Set Force Value = {} PSI| TimeStamp = {} SECONDS| Tap Interval = {} SECONDS\n").format(Taps_Left, Tap_Force, TimeStamp, Tap_Interval))
+        
+        if(sm.get_screen('drop_screen').label5.flag == '1'):
+            with open("Sensor_Log.txt", "a") as WriteValues:
+                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} PSI| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(max(List_Of_Values )), main_height, main_weight, TimeStamp, main_interval))
+       
+        List_Of_Values.clear()
+        TimeArray.clear()
         Time_Running = 0
-        List_Of_Values = []
-        TimeArray = []
-
-        bus = smbus.SMBus(1)
-        Sensor_Address = 0x04
-
-        print('Duration = {} seconds'.format(DURATION))
-        print("reading")
-        while True:
-            All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
-            Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
-            #print("Force = {} PSI, TimeStamp = {} seconds".format(Sensor_Force_Value,Time_Running))
-            List_Of_Values.append(Sensor_Force_Value)
-            TimeArray.append(Time_Running)
-            for value in List_Of_Values:
-                if value <= 10: #############TOLERANCE,,, IF SOFTER SET VALUE THRESHOLD LOWER
-                    del TimeArray[List_Of_Values.index(value)]
-                    #TimeArray.remove([List_Of_Values.index(value)])
-                    List_Of_Values.remove(value)
-
-            time.sleep(.025) #<-- increments at rates of .025 seconds, could do something with timestamp and frameindex
-            Time_Running = round(Time_Running +.025, 3)
-
-            if (Time_Running > DURATION): # <-- this will be replaced with (if motors still running/if start still pressed) but testing for now
-
-                print("Highest Force = {}".format(max(List_Of_Values)))
-                #sm.get_screen('data').datalabel.text = str(max(List_Of_Values)) #<--sens one value to label
-
-                print("writing value to log")
-                with open("Sensor_Log.txt", "a") as WriteValues:
-                    for value in List_Of_Values:
-                        WriteValues.write("Force Value = {} psi| TimeStamp = {} seconds\n".format(str(value), str(TimeArray[List_Of_Values.index(value)])))
-                    #values written to txt file, each new line = new drop
-
-                with open("Sensor_Log.txt", "r+") as UploadValues:
-                    f = UploadValues.readlines()#SEND VALUES TO THE TABLE
-                    count = 0
-                    for line in f:
-                        count +=1
-                        sm.get_screen('data').datalabel.text += str(line) + "\n"
-                        print("adding line {} to datalabel".format(count))
-                    count = 0
-
-                List_Of_Values.clear()
-                TimeArray.clear()
-                print("wrote value to log")
-                sm.get_screen('tap_screen').start.flag = '0'
-                sm.get_screen('tap_screen').start.text = 'Done/Start'
-                break
-
+        print("wrote value to log")
+        
     #Push micro actuator out
     def toggle_hold_out(self):
         print('holding out')
@@ -756,10 +889,11 @@ class Events(Screen):
     pass
 
 # UNCOMMENT THESE WHEN SENDING !!!
-'''
+
+#motor addresses
 kit = MotorKit()
 kit1= MotorKit(address=0x61)
-'''
+
 
 #kivy screen logic and variable names
 sm = ScreenManager()
