@@ -6,6 +6,10 @@ import threading
 import smbus
 import picamera
 
+import gpiozero
+from gpiozero import Button
+bump=Button(23)
+
 ### Kivy Imports ###
 from kivy.properties import ObjectProperty
 from kivy.clock import Clock
@@ -88,13 +92,14 @@ Builder.load_string("""
     FloatLayout:
         
         Label:
-            text:'Automated TBI for C. elagans'
+            text:'Automated TBI for C. elegans'
             font_size: 60
             size_hint : (1,.25)
             pos_hint : {'top':.95,'center_x':.5}
 
         Button:
             text:'Drop Mode'
+            font_size: 40
             size_hint : (.5,.15)
             pos_hint : {'top':.75,'center_x':.5}
 
@@ -103,6 +108,7 @@ Builder.load_string("""
                 
         Button:
             text: 'Tap Mode'
+            font_size: 40
             size_hint : (.5,.15)
             pos_hint : {'top':.55,'center_x':.5}
             
@@ -112,6 +118,7 @@ Builder.load_string("""
         Button:
             
             text: 'Data'
+            font_size: 40
             size_hint : (.5,.15)
             pos_hint : {'top':.35,'center_x':.5}
             
@@ -155,7 +162,7 @@ Builder.load_string("""
             choice:'0'
             flag:'0'
             
-            text:'Tap Ammount:'
+            text:'Tap Amount:'
             font_size: 25
             size_hint:(.2,.15)
             pos_hint:{'center_x':.65,'top':.6}
@@ -195,7 +202,8 @@ Builder.load_string("""
             pos_hint:{'center_x':.15,'top':.2}
             
         Button:
-            text: 'placeholder for camera preview'
+            text: 'Preview'
+            font_size: 20
             size_hint:(.5,.6)
             pos_hint:{'center_x':.25,'top':.8}
 
@@ -357,7 +365,8 @@ Builder.load_string("""
                 root.manager.current = 'home'
         
         Button:
-            text: 'placeholder for camera preview'
+            text: 'Preview'
+            font_size: 20
             size_hint:(.5,.6)
             pos_hint:{'center_x':.25,'top':.8}
             
@@ -485,7 +494,7 @@ Builder.load_string("""
             pos_hint:{'top':1,'left_x':.5}
 
         Button:
-            text:'Return to Menu'
+            text:'Home'
             size_hint:(.5,.1)
             pos_hint:{'center_x':.75,"top":.1}
             
@@ -495,7 +504,7 @@ Builder.load_string("""
                 root.manager.get_screen('tap_screen').tapback.flag == '0'
 
         Button:
-            text: 'Clear ALL Data'
+            text: 'Clear All Data'
             size_hint:(.5,.1)
             pos_hint:{'top':.2,'center_x':.25}
             
@@ -509,7 +518,7 @@ Builder.load_string("""
             pos_hint:{'top':.2,'center_x':.75}
             
         Button:
-            text: 'Previous Page'
+            text: 'Back'
             size_hint:(.5,.1)
             pos_hint:{'top':.1,'center_x':.25}
             
@@ -552,7 +561,7 @@ class DropScreen(Screen):
         Tap_Ammount = int(sm.get_screen('tap_screen').ammount.choice)
         
         Taps_Left = Tap_Ammount
-        sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' Drops Remaining'
+        sm.get_screen('tap_screen').tapleft.text = 'Drops Remaining: ' + str(Taps_Left)
         
         print(Tap_Interval)
         print(Tap_Ammount)
@@ -581,7 +590,7 @@ class DropScreen(Screen):
             start = 1
 
         # update display values, give user feedback
-        sm.get_screen('drop_screen').drop.text = str(drops_left) + ' Drops Remaining'
+        sm.get_screen('drop_screen').drop.text = 'Drops Remaining: ' + str(drops_left)
 
         print(main_height)
         print(main_interval)
@@ -642,20 +651,20 @@ class Events(Screen):
         if(first_tap):
             first_tap = False
             print("first tap")
-            
+            Events.lower(self)
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            Events.Read_Sensor(self) # <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             time.sleep(3)  #sleep to let sensor and camera catch up
+            Events.Read_Sensor(self) # <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.lower(self)
             Events.lift(self)
             Events.Save_Data(self)
-            time.sleep(3)  #sleep for an ammount to make cam record longer
+            time.sleep(30)  #sleep for an ammount to make cam record longer
             Events.cam_stop(self)
             
             Taps_Left = Taps_Left -1
-            sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' taps Remaining'
+            sm.get_screen('tap_screen').tapleft.text = 'Taps Remaining: ' + str(Taps_Left)
             print('taps left ' + str(Taps_Left))
             
             Clock.schedule_once(Events.manage_taps, Tap_Interval)
@@ -663,23 +672,23 @@ class Events(Screen):
         elif ((first_tap == False) and (Taps_Left > 0) ):
             print ('beginning next tap')
             Events.cam_record(self)
-            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             time.sleep(3)  #sleep to let sensor and camera catch up
+            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.lower(self)
             Events.lift(self)
             Events.Save_Data(self)
-            time.sleep(3)  #sleep for an ammount to make cam record longer
+            time.sleep(30)  #sleep for an ammount to make cam record longer
             Events.cam_stop(self)
             
             Taps_Left = Taps_Left-1
-            sm.get_screen('tap_screen').tapleft.text = str(Taps_Left) + ' taps Remaining'
+            sm.get_screen('tap_screen').tapleft.text = 'Taps Remaining: ' + str(Taps_Left)
             print('taps left ' + str(Taps_Left))
             
             Clock.schedule_once(Events.manage_taps, Tap_Interval)
         
         elif(Taps_Left == 0):
+            Events.lower(self)
             print("Taps Complete")
-            
             sm.get_screen('tap_screen').start.flag = '0'
             sm.get_screen('tap_screen').start.text = 'Done / Start'
             first_tap = True
@@ -709,25 +718,25 @@ class Events(Screen):
             drops_left = main_drops
             first_drop = False
             print("First Drop")
-            
             # drop process
+            Events.lower(self)
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             time.sleep(3)  #sleep to let sensor and camera catch up
+            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.toggle_hold_in(self)
             Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
             Events.Save_Data(self)
-            time.sleep(3)  #sleep to make cam record longer
+            time.sleep(30)  #sleep to make cam record longer
             Events.cam_stop(self)
 
             # drops left update
             drops_left = drops_left-1
-            sm.get_screen('drop_screen').drop.text = str(drops_left) + ' Drops Remaining'
-            print('drops left ' + str(drops_left))
+            sm.get_screen('drop_screen').drop.text = 'Drops Remaining: ' + str(drops_left)
+            print('Drops Left: ' + str(drops_left))
             print('first drop done\n')
             
             #schedule this function again (main_interval) seconds later
@@ -736,20 +745,20 @@ class Events(Screen):
 
         #if after first drop and there are drops left, run drop protocol again and schedule this function again
         elif((first_drop == False) and (drops_left > 0)):
-            print('starting ' +str(drops_left) + 'th drop')
+            print('Starting Drop # ' +str(drops_left))
             
             #drop process
             Events.cam_record(self)
-            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             time.sleep(3)  #sleep to let sensor and camera catch up
+            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.toggle_hold_in(self)
             Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
             Events.Save_Data(self)
-            time.sleep(3)  #sleep to make cam record longer
+            time.sleep(30)  #sleep to make cam record longer
             Events.cam_stop(self)
-            print('drop complete!')
+            print('Drop Complete!')
             
             #drops left update
             drops_left = drops_left-1
@@ -764,8 +773,9 @@ class Events(Screen):
         #if there are no more drops, stop process
         elif(drops_left == 0):
             print("Drops Complete")
+            Events.lower(self)
             sm.get_screen('drop_screen').label5.flag = '0'
-            sm.get_screen('drop_screen').label5.text = 'Done / Start'
+            sm.get_screen('drop_screen').label5.text = 'Done/Start'
             start = 0
             first_drop = True
             camera.stop_preview()
@@ -786,7 +796,7 @@ class Events(Screen):
         global Taps_Left
         global start
         
-        print('starting recording')
+        print('Recording')
         #differentiate between taps and drops
         if (start == 1):
             camera.annotate_text = "Drop # {}".format(drops_left)
@@ -800,7 +810,7 @@ class Events(Screen):
     #stops recording
     def cam_stop(self):
         camera.stop_recording()
-        print('stopped recording')
+        print('Stopped Recording')
                 
     def Read_Sensor(self):
         # setting up variables. (sensor duration effects how long the sensor reads for)
@@ -809,9 +819,9 @@ class Events(Screen):
         global TimeArray
         global Sensor_Duration
         global Sensor_Time_Interval
-        global bus
+        bus = smbus.SMBus(1)
         global Sensor_Address
-        print("reading")
+        print("Reading")
         
         # loops for DURATION seconds, reading every INTERVAL seconds
         while True:
@@ -890,7 +900,7 @@ class Events(Screen):
         pass#needed? or put in toggle hold out
 
     #lift large motor upwards, for height ammount
-    def lift(self): 
+    def lift(self):
         global main_height
         print('lifting ' + str(main_height))
     
@@ -904,17 +914,35 @@ class Events(Screen):
         pass
 
     def lower(self):  # LOWER
+        global bump
+        print('lowering to home')
+        while True:
+            if bump.is_pressed:
+                print('stopping')
+                time.sleep(1)
+                print('reversing slightly')
+                for i in range(10):
+                    kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)
+                time.sleep(1)
+                print('stopping')
+                kit1.stepper1.release()
+                break
+            else:
+                kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)
+            
+    
+
+        '''
         global main_height
         print('lowering ' + str(main_height))
-
         # 1 cm = 394 steps
         # *395 to ensure it bottoms out evenly
+        if 
         for i in range(main_height*395):
             kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)     #lower
         kit1.stepper1.release()
-
         pass
-
+        '''
     pass
 
 # UNCOMMENT THESE WHEN SENDING !!!
@@ -923,7 +951,6 @@ class Events(Screen):
 
 kit = MotorKit()
 kit1= MotorKit(address=0x61)
-
 
 #kivy screen logic and variable names
 sm = ScreenManager()
