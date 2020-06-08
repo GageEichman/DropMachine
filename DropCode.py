@@ -920,10 +920,10 @@ class Events(Screen):
 # UNCOMMENT THESE WHEN SENDING !!!
 
 #motor addresses
-'''
+
 kit = MotorKit()
 kit1= MotorKit(address=0x61)
-'''
+
 
 #kivy screen logic and variable names
 sm = ScreenManager()
