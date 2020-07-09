@@ -5,10 +5,17 @@ import sched
 import threading
 import smbus
 import picamera
-
 import gpiozero
+import os
+import shutil
+
+import datetime
+from datetime import datetime
+#bump, shutdown, and os imports
 from gpiozero import Button
 bump=Button(23)
+
+from subprocess import call
 
 ### Kivy Imports ###
 from kivy.properties import ObjectProperty
@@ -22,6 +29,8 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.app import App
 from kivy.graphics import Color
+from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.filechooser import FileChooserIconView
 
 ### Motor Imports ###
 from adafruit_motorkit import MotorKit
@@ -89,8 +98,9 @@ Builder.load_string("""
 
 #Boot Screen
 <HomeScreen>
+    shutdown:shutdown
     FloatLayout:
-        
+            
         Label:
             text:'Automated TBI for C. elegans'
             font_size: 60
@@ -114,9 +124,8 @@ Builder.load_string("""
             
             on_press:
                 root.manager.current = 'tap_screen'
-          
+        
         Button:
-            
             text: 'Data'
             font_size: 40
             size_hint : (.5,.15)
@@ -124,6 +133,18 @@ Builder.load_string("""
             
             on_press:
                 root.manager.current = 'data'
+                
+        Button:
+            id: shutdown
+            flag: '0'
+            
+            text: 'Exit (TBD SHUTDOWN)'
+            font_size: 40
+            size_hint : (.5,.17)
+            pos_hint : {'top':.15,'center_x':.5}
+            
+            on_press:
+                root.manager.get_screen('home').shutdown.flag = '1'
             
 #Tap Mode Screen
 <TapScreen>:
@@ -251,6 +272,7 @@ Builder.load_string("""
     label5: label5                          #Start
     drop:   drop
     dropback:dropback
+    droptimer:droptimer
     
     FloatLayout:
         Label:
@@ -310,6 +332,8 @@ Builder.load_string("""
             pos_hint:{'center_x':.1,'top':.2}
 
         Label:
+            id:droptimer
+            
             text: 'Next Drop: '
             font_size: 20
             size_hint:(.2,.15)
@@ -517,6 +541,8 @@ Builder.load_string("""
             size_hint:(.5,.1)
             pos_hint:{'top':.2,'center_x':.75}
             
+            on_press:
+                root.manager.current = 'file'
         Button:
             text: 'Back'
             size_hint:(.5,.1)
@@ -528,10 +554,41 @@ Builder.load_string("""
                 else: root.manager.current = 'home'
                 root.manager.get_screen('drop_screen').dropback.flag = '0'
                 root.manager.get_screen('tap_screen').tapback.flag = '0'
+
+<FileScreen>
+    filechooser:filechooser
+    
+    FloatLayout:
+        FileChooserIconView:
+            id:filechooser
+            flag:'0'
+            
+            on_selection:
+            #when you click
+        Button:
+            text: 'copy data'
+            size_hint:(.5,.1)
+            pos_hint:{'top':.2,'center_x':.75}
+            
+            on_press:
+                #copy data to selected folder
+                print(filechooser.path)
+                root.manager.get_screen('file').filechooser.flag = '1'
                 
+                
+        Button:
+            text: 'Back'
+            size_hint:(.5,.1)
+            pos_hint:{'top':.1,'center_x':.25}
+            
+            on_press:
+                root.manager.current = 'data'
             
 """)
 ############################ Back End Functions and Scheduling ################################
+
+class FileScreen(Screen):
+    pass
 
 class NumScreen(Screen):
     pass
@@ -567,7 +624,7 @@ class DropScreen(Screen):
         print(Tap_Ammount)
         print(Tap_Force)
         
-        # ADD TIME REMAINING AND TAPS REMAINING TO SCREEN ################
+        # ADD TIME REMAINING TO SCREEN ################
         
     # updates input values for Drop Mode
     def Drop_global_update(self):
@@ -601,9 +658,28 @@ class DropScreen(Screen):
         global drops_left
         global first_drop
         
+        #copies file/ exports data
+        if (sm.get_screen('file').filechooser.flag == '1'):
+            sm.get_screen('file').filechooser.flag = '0'
+            save_date = datetime.now()
+            print(save_date.strftime("%d-%m-%Y %H:%M"))
+            destination = sm.get_screen('file').filechooser.path + '/Sensor_Log({}).txt'.format(save_date.strftime("%d %m %Y %H%M"))
+            source = '/home/pi/Desktop/Test_Start/Sensor_Log.txt' # <--- change to the directory Sensor_log.txt is in
+            
+            shutil.copyfile(source,destination)
+            
+        #exits app and shuts down pi
+        if (sm.get_screen('home').shutdown.flag == '1'):
+            #add pop up that asks are you sure you want to shut down
+            sm.get_screen('home').shutdown.flag = '0'
+            GUI.stop()
+            # vvv TURNS OFF PI vvv
+            #call("sudo poweroff", shell=True)
+            # ^^^ TURNS OFF PI ^^^
+            
         #clears data 
         if (sm.get_screen('data').datalabel.flag == '1'):
-            #throw the rest of this in a loop that first asks a pop up
+            #add popo up that asks if youre sure you want to shut down
             sm.get_screen('data').datalabel.flag = '0'
             with open("Sensor_Log.txt", "r+") as DeleteValues:
                 DeleteValues.truncate(0)
@@ -655,9 +731,9 @@ class Events(Screen):
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
+            Events.Begin_Countdown(self)
             time.sleep(3)  #sleep to let sensor and camera catch up
-            Events.Read_Sensor(self) # <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
-            Events.lower(self)
+            Events.Walk_to_threshold(self)
             Events.lift(self)
             Events.Save_Data(self)
             time.sleep(30)  #sleep for an ammount to make cam record longer
@@ -668,13 +744,13 @@ class Events(Screen):
             print('taps left ' + str(Taps_Left))
             
             Clock.schedule_once(Events.manage_taps, Tap_Interval)
+            Events.Begin_Countdown(self)
             
         elif ((first_tap == False) and (Taps_Left > 0) ):
             print ('beginning next tap')
             Events.cam_record(self)
             time.sleep(3)  #sleep to let sensor and camera catch up
-            Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
-            Events.lower(self)
+            Events.Walk_to_threshold(self)
             Events.lift(self)
             Events.Save_Data(self)
             time.sleep(30)  #sleep for an ammount to make cam record longer
@@ -685,6 +761,7 @@ class Events(Screen):
             print('taps left ' + str(Taps_Left))
             
             Clock.schedule_once(Events.manage_taps, Tap_Interval)
+            Events.Begin_Countdown(self)
         
         elif(Taps_Left == 0):
             Events.lower(self)
@@ -723,6 +800,7 @@ class Events(Screen):
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
+            Events.Begin_Countdown(self)
             time.sleep(3)  #sleep to let sensor and camera catch up
             Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.toggle_hold_in(self)
@@ -741,6 +819,7 @@ class Events(Screen):
             
             #schedule this function again (main_interval) seconds later
             Clock.schedule_once(Events.manage_drops, main_interval)
+            Events.Begin_Countdown(self)
             pass
 
         #if after first drop and there are drops left, run drop protocol again and schedule this function again
@@ -768,6 +847,7 @@ class Events(Screen):
 
             #schedule next drop after (main interval) seconds
             Clock.schedule_once(Events.manage_drops, main_interval)
+            Events.Begin_Countdown(self)
             pass
 
         #if there are no more drops, stop process
@@ -790,6 +870,61 @@ class Events(Screen):
                     print("adding line {} to datalabel".format(count))
                 count = 0
     
+    def Begin_Countdown():
+        global Tap_Interval
+        global main_interval
+        
+        if(sm.get_screen('tap_screen').start.flag == '1'):
+            for i in range (Tap_Interval * 60, 0, -1):
+                sm.get_screen('tap_screen').taptimer.text = str(i) + 'Seconds'
+                time.sleep(1)
+            
+        if(sm.get_screen('drop_screen').label5.flag == '1'):
+            for i in range (main_interval * 60, 0, -1):
+                sm.get_screen('drop_screen').droptimer.text = str(i) + ' Seconds'
+                time.sleep(1)
+        
+        sm.get_screen('tap_screen').taptimer.text = 'Experiment in transit...'
+        sm.get_screen('drop_screen').droptimer.text = 'Experiment in transit...'
+        print('Experiment in transit...')
+        
+    def Walk_to_threshold():
+        global Time_Running
+        global List_Of_Values
+        global TimeArray
+        global Sensor_Duration
+        global Sensor_Time_Interval
+        bus = smbus.SMBus(1)
+        global Sensor_Address
+        global Tap_Force
+
+        print("Reading")
+        while True:
+            All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
+            Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
+            List_Of_Values.append(Sensor_Force_Value)
+            
+            Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
+            TimeArray.append(Time_Running)
+            Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
+            
+            if(Time_Running > Sensor_Duration):    
+                #move motors or bust
+                if (max(List_Of_Values) < Tap_Force):
+                    # reset values so they arent carried over
+                    List_Of_Values = []
+                    TimeArray = []
+                    Time_Running = 0
+                    print('moving motor down .5cm')
+                    for i in range (39): #(moves around 1/10 a centimeter)
+                        kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)
+                elif(max(List_Of_Values) >= Tap_Force):
+                    List_Of_Values = []
+                    TimeArray = []
+                    Time_Running = 0
+                    print('threshold met, breaking loop and lifting')
+                    break
+        
     #records until cam_stop is called
     def cam_record(self):
         global drops_left
@@ -861,17 +996,23 @@ class Events(Screen):
         
         print("Highest Force = {}".format(max(List_Of_Values)))
         print("writing value to log")
+        
+        save_date = datetime.now()
+        print(save_date.strftime("%d-%m-%Y %H:%M"))
+            
     
          #writes data values to a log file, each line = new drop
         
         if(sm.get_screen('tap_screen').start.flag == '1'):
             with open("Sensor_Log.txt", "a") as WriteValues:
+                WriteValues.write(('Tap Experiment on {}\n').format(save_date.strftime("%d-%m-%Y %H:%M")))
                 WriteValues.write(("Tap Mode: Tap # = {} | Set Force Value = {} PSI| TimeStamp = {} SECONDS| Tap Interval = {} SECONDS\n").format(Taps_Left, Tap_Force, TimeStamp, Tap_Interval))
-        
+                WriteValues.write('\n')
         if(sm.get_screen('drop_screen').label5.flag == '1'):
             with open("Sensor_Log.txt", "a") as WriteValues:
+                WriteValues.write(('Drop Experiment on {}\n').format(save_date.strftime("%d-%m-%Y %H:%M")))
                 WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} PSI| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(max(List_Of_Values )), main_height, main_weight, TimeStamp, main_interval))
-       
+                WriteValues.write('\n')
         List_Of_Values.clear()
         TimeArray.clear()
         Time_Running = 0
@@ -948,10 +1089,10 @@ class Events(Screen):
 # UNCOMMENT THESE WHEN SENDING !!!
 
 #motor addresses
-
+'''
 kit = MotorKit()
 kit1= MotorKit(address=0x61)
-
+'''
 #kivy screen logic and variable names
 sm = ScreenManager()
 sm.add_widget(HomeScreen(name='home'))
@@ -959,6 +1100,7 @@ sm.add_widget(TapScreen(name='tap_screen'))
 sm.add_widget(DropScreen(name='drop_screen'))
 sm.add_widget(NumScreen(name='numpad'))
 sm.add_widget(DataScreen(name='data'))
+sm.add_widget(FileScreen(name='file'))
 
 sm.add_widget(Events(name='event'))  # this may be a dont care (events)
 
@@ -976,3 +1118,4 @@ class TestApp(App):
 if __name__ == '__main__':
     GUI = TestApp()
     GUI.run()
+
