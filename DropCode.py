@@ -5,6 +5,8 @@ import sched
 import threading
 import smbus
 import picamera
+from Autofocus import *
+from picamera.array import PiRGBArray
 import gpiozero
 import os
 import shutil
@@ -483,7 +485,7 @@ Builder.load_string("""
                     elif((root.manager.get_screen('tap_screen').ammount.flag)=='1'):root.manager.get_screen('tap_screen').ammount.text = entry.text + ' Taps'; root.manager.get_screen('tap_screen').ammount.choice = entry.text
                    
                     # Tap Mode Threshold Button
-                    elif((root.manager.get_screen('tap_screen').force.flag)=='1'):root.manager.get_screen('tap_screen').force.text = entry.text + ' PSI Threshold'; root.manager.get_screen('tap_screen').force.choice = entry.text
+                    elif((root.manager.get_screen('tap_screen').force.flag)=='1'):root.manager.get_screen('tap_screen').force.text = entry.text + ' N Threshold'; root.manager.get_screen('tap_screen').force.choice = entry.text
                    
                     # getting to last page
                     if((root.manager.get_screen('tap_screen').interval.flag)=='1'): root.manager.current = 'tap_screen'
@@ -727,12 +729,13 @@ class Events(Screen):
             sm.get_screen('tap_screen').tapleft.text = 'Drops Remaining: ' + str(Taps_Left)
             
             Events.lower(self)
+            Events.focus_camera(self)
             Events.cam_record(self)
             Events.toggle_hold_out(self)
-            Events.lift(self)
             time.sleep(3)  #sleep to let sensor and camera catch up
+            for i in range (156): #(goes up around 4/10 cm)
+                kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)
             Events.Walk_to_threshold(self)
-            Events.lift(self)
             Events.Save_Data(self)
             time.sleep(30)  #sleep for an ammount to make cam record longer
             Events.cam_stop(self)
@@ -741,15 +744,15 @@ class Events(Screen):
             sm.get_screen('tap_screen').tapleft.text = 'Taps Remaining: ' + str(Taps_Left)
             print('taps left ' + str(Taps_Left))
             
-            Clock.schedule_once(Events.manage_taps, Tap_Interval)
             Events.Begin_Countdown(self)
+            Clock.schedule_once(Events.manage_taps, 1)
             
         elif ((first_tap == False) and (Taps_Left > 0) ):
             print ('beginning next tap')
+            Events.focus_camera(self)
             Events.cam_record(self)
             time.sleep(3)  #sleep to let sensor and camera catch up
             Events.Walk_to_threshold(self)
-            Events.lift(self)
             Events.Save_Data(self)
             time.sleep(30)  #sleep for an ammount to make cam record longer
             Events.cam_stop(self)
@@ -758,8 +761,8 @@ class Events(Screen):
             sm.get_screen('tap_screen').tapleft.text = 'Taps Remaining: ' + str(Taps_Left)
             print('taps left ' + str(Taps_Left))
             
-            Clock.schedule_once(Events.manage_taps, Tap_Interval)
             Events.Begin_Countdown(self)
+            Clock.schedule_once(Events.manage_taps, 1)
         
         elif(Taps_Left == 0):
             Events.lower(self)
@@ -796,6 +799,7 @@ class Events(Screen):
             sm.get_screen('drop_screen').drop.text = 'Drops Remaining: ' + str(drops_left)
             # drop process
             Events.lower(self)
+            Events.focus_camera(self)
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
@@ -816,8 +820,8 @@ class Events(Screen):
             print('first drop done\n')
             
             #schedule this function again (main_interval) seconds later
-            Clock.schedule_once(Events.manage_drops, main_interval)
             Events.Begin_Countdown(self)
+            Clock.schedule_once(Events.manage_drops, 1)
             pass
 
         #if after first drop and there are drops left, run drop protocol again and schedule this function again
@@ -825,6 +829,7 @@ class Events(Screen):
             print('Starting Drop # ' +str(drops_left))
             
             #drop process
+            Events.focus_camera(self)
             Events.cam_record(self)
             time.sleep(3)  #sleep to let sensor and camera catch up
             Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
@@ -844,8 +849,8 @@ class Events(Screen):
 
 
             #schedule next drop after (main interval) seconds
-            Clock.schedule_once(Events.manage_drops, main_interval)
             Events.Begin_Countdown(self)
+            Clock.schedule_once(Events.manage_drops, 1)
             pass
 
         #if there are no more drops, stop process
@@ -875,12 +880,13 @@ class Events(Screen):
         if(sm.get_screen('tap_screen').start.flag == '1'):
             for i in range (Tap_Interval, 0, -1):
                 sm.get_screen('tap_screen').taptimer.text = ('Next tap: {} seconds').format(i)
+                print(('tapping in {} seconds').format(i))
                 time.sleep(1)
             
         if(sm.get_screen('drop_screen').label5.flag == '1'):
             for i in range (main_interval, 0, -1):
-                print(i)
                 sm.get_screen('drop_screen').droptimer.text = ('Next drop: {} seconds').format(i)
+                print(('dropping in {} seconds').format(i))
                 time.sleep(1)
         
         sm.get_screen('tap_screen').taptimer.text = 'Experiment in transit...'
@@ -896,18 +902,26 @@ class Events(Screen):
         bus = smbus.SMBus(1)
         global Sensor_Address
         global Tap_Force
+        
+        List_Of_Values = []
+        TimeArray = []
+        Time_Running = 0
+        
+        down_counter = 0
+        #records how many times the motor has moved down
 
         print("Reading")
         while True:
             All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
             Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
-            List_Of_Values.append(Sensor_Force_Value)
+            List_Of_Values.append(Sensor_Force_Value*(.0235184)-(0.133771))
             
             Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
             TimeArray.append(Time_Running)
             Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
             
-            if(Time_Running > Sensor_Duration):    
+            if(Time_Running > Sensor_Duration):
+                down_counter = down_counter +1
                 #move motors or bust
                 if (max(List_Of_Values) < Tap_Force):
                     # reset values so they arent carried over
@@ -917,12 +931,50 @@ class Events(Screen):
                     print('moving motor down .5cm')
                     for i in range (39): #(moves around 1/10 a centimeter)
                         kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)
+                        
                 elif(max(List_Of_Values) >= Tap_Force):
-                    List_Of_Values = []
-                    TimeArray = []
-                    Time_Running = 0
                     print('threshold met, breaking loop and lifting')
+                    for i in range (down_counter*39 + 156): #(reverses however many times it went down + 4/10 cm)
+                        kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)
                     break
+                
+    def focus_camera(self):
+        print('focusing')
+        max_index = 10
+        max_value = 0.0
+        last_value = 0.0
+        dec_count = 0
+        focal_distance = 10
+        global camera
+        camera.resolution = (640, 480)
+        while True:
+            #Adjust focus
+            focusing(focal_distance)
+            #Take image and calculate image clarity
+            val = calculation(camera)
+            #Find the maximum image clarity
+            if val > max_value:
+                max_index = focal_distance
+                max_value = val
+                
+            #If the image clarity starts to decrease
+            if val < last_value:
+                dec_count += 1
+            else:
+                dec_count = 0
+                
+            #Image clarity is reduced by six consecutive frames
+            if dec_count > 6:
+                break
+            last_value = val
+            
+            
+            #Increase the focal distance
+            focal_distance += 10
+            if focal_distance > 1000:
+                break
+        focusing(max_index)
+        time.sleep(1)
         
     #records until cam_stop is called
     def cam_record(self):
@@ -968,32 +1020,11 @@ class Events(Screen):
             if (Time_Running > Sensor_Duration):
                 print('has been read')
                 break
-    '''
-    #figure out how to make these work as opposed to waiting to read sensor
-    def Start_Sensor_Read(self):
-        #vv in main control loop
-        #Clock.schedule_interval(Events.Start_Sensor_Read(self), Sensor_Time_Interval)
-        global Time_Running
-        global List_Of_Values
-        global TimeArray
-        global bus
-        global Sensor_Address
-        global Sensor_Time_Interval
-        
-        All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
-        Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
-        List_Of_Values.append(Sensor_Force_Value)
-        TimeArray.append(Time_Running)
-        Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
-        
-    def Stop_Sensor_Read(self):
-        Clock.unschedule(Events.Start_Sensor_Read)
-     '''   
         
     def Save_Data(self):
         TimeStamp= TimeArray[List_Of_Values.index(max(List_Of_Values))]
         
-        print("Highest Force = {}".format(max(List_Of_Values)))
+        print("Highest Sensor Value = {}".format(max(List_Of_Values)))
         print("writing value to log")
         
         save_date = datetime.now()
@@ -1005,12 +1036,12 @@ class Events(Screen):
         if(sm.get_screen('tap_screen').start.flag == '1'):
             with open("Sensor_Log.txt", "a") as WriteValues:
                 WriteValues.write(('Tap Experiment on {}\n').format(save_date.strftime("%d-%m-%Y %H:%M")))
-                WriteValues.write(("Tap Mode: Tap # = {} | Set Force Value = {} PSI| TimeStamp = {} SECONDS| Tap Interval = {} SECONDS\n").format(Taps_Left, Tap_Force, TimeStamp, Tap_Interval))
+                WriteValues.write(("Tap Mode: Tap # = {} | Set Force Value = {} N| TimeStamp = {} SECONDS| Tap Interval = {} SECONDS\n").format(Taps_Left, Tap_Force, TimeStamp, Tap_Interval))
                 WriteValues.write('\n')
         if(sm.get_screen('drop_screen').label5.flag == '1'):
             with open("Sensor_Log.txt", "a") as WriteValues:
                 WriteValues.write(('Drop Experiment on {}\n').format(save_date.strftime("%d-%m-%Y %H:%M")))
-                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} PSI| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(max(List_Of_Values )), main_height, main_weight, TimeStamp, main_interval))
+                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} N| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(max(List_Of_Values)*(.0235184)-(0.133771)), main_height, main_weight, TimeStamp, main_interval))
                 WriteValues.write('\n')
         List_Of_Values.clear()
         TimeArray.clear()
@@ -1046,7 +1077,7 @@ class Events(Screen):
     
         # 1 cm = 394 steps
         # for every step in height (main height = height * stepper conversion)
-        for i in range(main_height*394):
+        for i in range(main_height*397):
             kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)     #lift
         kit1.stepper1.release()  #so motor current dosnt spike
 
@@ -1061,7 +1092,7 @@ class Events(Screen):
                 print('stopping')
                 time.sleep(1)
                 print('reversing slightly')
-                for i in range(10):
+                for i in range(15):
                     kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)
                 time.sleep(1)
                 print('stopping')
@@ -1088,10 +1119,10 @@ class Events(Screen):
 # UNCOMMENT THESE WHEN SENDING !!!
 
 #motor addresses
-'''
+
 kit = MotorKit()
 kit1= MotorKit(address=0x61)
-'''
+
 #kivy screen logic and variable names
 sm = ScreenManager()
 sm.add_widget(HomeScreen(name='home'))
