@@ -914,7 +914,7 @@ class Events(Screen):
         while True:
             All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
             Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
-            List_Of_Values.append(Sensor_Force_Value*(.0235184)-(0.133771))
+            List_Of_Values.append(round((max(List_Of_Values)*(.0235184)-(0.12401313)),2))
             
             Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
             TimeArray.append(Time_Running)
@@ -946,7 +946,9 @@ class Events(Screen):
         dec_count = 0
         focal_distance = 10
         global camera
+        
         camera.resolution = (640, 480)
+        camera.start_preview(fullscreen=False, window =(0,145,960,720))
         while True:
             #Adjust focus
             focusing(focal_distance)
@@ -975,6 +977,7 @@ class Events(Screen):
                 break
         focusing(max_index)
         time.sleep(1)
+        camera.stop_preview()
         
     #records until cam_stop is called
     def cam_record(self):
@@ -1041,7 +1044,7 @@ class Events(Screen):
         if(sm.get_screen('drop_screen').label5.flag == '1'):
             with open("Sensor_Log.txt", "a") as WriteValues:
                 WriteValues.write(('Drop Experiment on {}\n').format(save_date.strftime("%d-%m-%Y %H:%M")))
-                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} N| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(max(List_Of_Values)*(.0235184)-(0.133771)), main_height, main_weight, TimeStamp, main_interval))
+                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} N| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(round((max(List_Of_Values)*(.0235184)-(0.12401313)),2)), main_height, main_weight, TimeStamp, main_interval))
                 WriteValues.write('\n')
         List_Of_Values.clear()
         TimeArray.clear()
@@ -1102,18 +1105,6 @@ class Events(Screen):
                 kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)
             
     
-
-        '''
-        global main_height
-        print('lowering ' + str(main_height))
-        # 1 cm = 394 steps
-        # *395 to ensure it bottoms out evenly
-        if 
-        for i in range(main_height*395):
-            kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)     #lower
-        kit1.stepper1.release()
-        pass
-        '''
     pass
 
 # UNCOMMENT THESE WHEN SENDING !!!
