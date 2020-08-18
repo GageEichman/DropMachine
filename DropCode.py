@@ -79,9 +79,12 @@ camera.resolution = (1280, 960)
 camera.framerate = 15 # 0-15
 camera.brightness = 60
 camera.contrast = 60
-#camera.start_preview(fullscreen=False, window =(100,50,1000,1000))
-# ^^ x,y,width,height, (w/h = ratio)
 
+### conversion values for sensor value ###
+m_conversion = .0235184 # this number is multiplied to the sensor output
+b_conversion = -(0.133771)+(.00936397)# this number is added to the sensor output
+
+video_length = 30
 ### Clock Timer ###
 # sets interval for start_stop (flag-check loop)
 # schedules drops for Drop Mode
@@ -147,6 +150,8 @@ Builder.load_string("""
             
             on_press:
                 root.manager.get_screen('home').shutdown.flag = '1'
+                
+
             
 #Tap Mode Screen
 <TapScreen>:
@@ -157,6 +162,8 @@ Builder.load_string("""
     tapback:tapback
     taptimer:taptimer
     tapleft:tapleft
+    tapcamtime:tapcamtime
+    tappause:tappause
     
     FloatLayout:
     
@@ -174,7 +181,7 @@ Builder.load_string("""
             text:'Tap Interval:'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.9,'top':.6}
+            pos_hint:{'center_x':.9,'top':.4}
                                    
             on_press:
                 root.manager.get_screen('tap_screen').interval.flag = '1' 
@@ -188,7 +195,7 @@ Builder.load_string("""
             text:'Tap Amount:'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.65,'top':.6}
+            pos_hint:{'center_x':.65,'top':.4}
             
             on_press:
                 root.manager.get_screen('tap_screen').ammount.flag = '1' 
@@ -202,7 +209,7 @@ Builder.load_string("""
             text:'Force Threshold:'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.9,'top':.8}
+            pos_hint:{'center_x':.9,'top':.6}
             
             on_press:
                 root.manager.get_screen('tap_screen').force.flag = '1' 
@@ -244,13 +251,37 @@ Builder.load_string("""
                 elif(root.manager.get_screen('tap_screen').start.flag == '1'):root.manager.get_screen('tap_screen').start.flag = '0';root.manager.get_screen('tap_screen').start.text = 'START'
 
         Button:
+            id: tapcamtime
+            flag: '0'
+            choice: '30'
+            
+            text: 'Video Length'
+            font_size: 25
+            size_hint : (.2,.15)
+            pos_hint : {'top':.6,'center_x':.65}
+            
+            on_press:
+                root.manager.get_screen('tap_screen').tapcamtime.flag = '1' 
+                root.manager.current = 'numpad'
+                
+        Button:
+            id:tappause
+            text: 'Pause'
+            font_size: 25
+            size_hint : (.2,.15)
+            pos_hint : {'top':.8,'center_x':.9}
+            
+            on_press:
+                root.manager.get_screen('tap_screen').tappause.text = 'Resume'
+                
+        Button:
             id: tapback
             flag:'0'
             
             text: 'Data'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.65,'top':.35}
+            pos_hint:{'center_x':.65,'top':.2}
 
             on_press:
                 root.manager.current = 'data'
@@ -260,7 +291,7 @@ Builder.load_string("""
             text: 'Home'
             font_size: 25
             size_hint: (.2,.15)
-            pos_hint:{'center_x':.9,'top':.35}
+            pos_hint:{'center_x':.9,'top':.2}
 
             on_press:
                 root.manager.current = 'home'
@@ -275,13 +306,15 @@ Builder.load_string("""
     drop:   drop
     dropback:dropback
     droptimer:droptimer
+    dropcamtime:dropcamtime
+    droppause:droppause
     
     FloatLayout:
         Label:
             text:'Drop Mode'
             font_size : 40
             size_hint:(1,.2)
-            pos_hint: {'center_x':.5,'top':1} 
+            pos_hint: {'center_x':.25,'top':1} 
 
         Button:
             id: label1
@@ -291,7 +324,7 @@ Builder.load_string("""
             text:'Height: '
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.65,'top':.6}
+            pos_hint:{'center_x':.65,'top':.7}
 
             on_press:
                 root.manager.get_screen('drop_screen').label1.flag = '1'
@@ -305,7 +338,7 @@ Builder.load_string("""
             text:'Interval: '
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.9,'top':.4}
+            pos_hint:{'center_x':.9,'top':.5}
 
             on_press:
                 root.manager.get_screen('drop_screen').label2.flag = '1'
@@ -319,7 +352,7 @@ Builder.load_string("""
             text:'Drops: '
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.65,'top':.4}
+            pos_hint:{'center_x':.65,'top':.5}
 
             on_press:
                 root.manager.get_screen('drop_screen').label3.flag = '1'
@@ -348,12 +381,37 @@ Builder.load_string("""
             text: 'START'
             font_size:25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.775,'top':.8}
+            pos_hint:{'center_x':.65,'top':.9}
             
             on_press:
                 if(root.manager.get_screen('drop_screen').label5.flag == '0'):root.manager.get_screen('drop_screen').label5.flag = '1'; root.manager.get_screen('drop_screen').label5.text = 'STOP'
                 elif(root.manager.get_screen('drop_screen').label5.flag == '1'):root.manager.get_screen('drop_screen').label5.flag = '0';root.manager.get_screen('drop_screen').label5.text = 'START'
 
+
+        Button:
+            id :droppause
+            text: 'Pause'
+            font_size: 25
+            size_hint : (.2,.15)
+            pos_hint : {'top':.9,'center_x':.9}
+            
+            on_press:
+                root.manager.get_screen('drop_screen').droppause.text = 'Resume'
+                
+        Button:
+            id: dropcamtime
+            flag: '0'
+            choice: '30'
+            
+            text: 'Video Length'
+            font_size: 25
+            size_hint : (.2,.15)
+            pos_hint : {'top':.3,'center_x':.775}
+            
+            on_press:
+                root.manager.get_screen('drop_screen').dropcamtime.flag = '1' 
+                root.manager.current = 'numpad'
+                
         Button:
             id: dropback
             flag: '0'
@@ -361,7 +419,7 @@ Builder.load_string("""
             text: 'Data '
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.65,'top':.2}
+            pos_hint:{'center_x':.65,'top':.1}
 
             on_press:
                 root.manager.current = 'data'
@@ -375,7 +433,7 @@ Builder.load_string("""
             text: 'Weight: '
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.9,'top':.6}
+            pos_hint:{'center_x':.9,'top':.7}
             
             on_press:
                 root.manager.get_screen('drop_screen').label4.flag = '1'
@@ -385,7 +443,7 @@ Builder.load_string("""
             text: 'Home'
             font_size: 25
             size_hint:(.2,.15)
-            pos_hint:{'center_x':.9,'top':.2}
+            pos_hint:{'center_x':.9,'top':.1}
             
             on_press:
                 root.manager.current = 'home'
@@ -487,13 +545,24 @@ Builder.load_string("""
                     # Tap Mode Threshold Button
                     elif((root.manager.get_screen('tap_screen').force.flag)=='1'):root.manager.get_screen('tap_screen').force.text = entry.text + ' N Threshold'; root.manager.get_screen('tap_screen').force.choice = entry.text
                    
+                    #Tap video length button
+                    
+                    elif((root.manager.get_screen('tap_screen').tapcamtime.flag)=='1'):root.manager.get_screen('tap_screen').tapcamtime.text = entry.text + ' second recording'; root.manager.get_screen('tap_screen').tapcamtime.choice = entry.text
+                    #drop video length button
+                    elif((root.manager.get_screen('drop_screen').dropcamtime.flag)=='1'):root.manager.get_screen('drop_screen').dropcamtime.text = entry.text + ' second recording'; root.manager.get_screen('drop_screen').dropcamtime.choice = entry.text
+                    
                     # getting to last page
-                    if((root.manager.get_screen('tap_screen').interval.flag)=='1'): root.manager.current = 'tap_screen'
+                    
+                    elif((root.manager.get_screen('tap_screen').interval.flag)=='1'): root.manager.current = 'tap_screen'
                     elif((root.manager.get_screen('tap_screen').force.flag)=='1'): root.manager.current = 'tap_screen'
                     elif((root.manager.get_screen('tap_screen').ammount.flag)=='1'): root.manager.current = 'tap_screen'
+                    elif((root.manager.get_screen('tap_screen').tapcamtime.flag)=='1'): root.manager.current = 'tap_screen'
                     else: root.manager.current = 'drop_screen'
                     
                     #clear flags after so you dont add number value to another box
+                    root.manager.get_screen('tap_screen').tapcamtime.flag = '0'
+                    root.manager.get_screen('drop_screen').dropcamtime.flag = '0'
+                    
                     root.manager.get_screen('drop_screen').label1.flag = '0'
                     root.manager.get_screen('drop_screen').label2.flag = '0'
                     root.manager.get_screen('drop_screen').label3.flag = '0'
@@ -501,6 +570,7 @@ Builder.load_string("""
                     root.manager.get_screen('tap_screen').interval.flag = '0'
                     root.manager.get_screen('tap_screen').force.flag = '0'
                     root.manager.get_screen('tap_screen').ammount.flag = '0'
+                    
 
                     #instantiate the variable for user input
                     entry.text = ''
@@ -613,11 +683,14 @@ class DropScreen(Screen):
         global Tap_Interval
         global Tap_Force
         global Tap_Ammount 
-        global Taps_Left 
+        global Taps_Left
+        global video_length
         
         Tap_Interval = int(sm.get_screen('tap_screen').interval.choice)
         Tap_Force = int(sm.get_screen('tap_screen').force.choice)
         Tap_Ammount = int(sm.get_screen('tap_screen').ammount.choice)
+        
+        video_length = int(sm.get_screen('tap_screen').tapcamtime.choice)
         
         Taps_Left = Tap_Ammount
         sm.get_screen('tap_screen').tapleft.text = 'Drops Remaining: ' + str(Taps_Left)
@@ -636,12 +709,15 @@ class DropScreen(Screen):
         global main_weight
         global drops_left
         global start
+        global video_length
 
         # sets height, interval, weight, and drops variables to what the user has chosen
         main_height = int(sm.get_screen('drop_screen').label1.choice)
         main_interval = int(sm.get_screen('drop_screen').label2.choice)
         main_drops = int(sm.get_screen('drop_screen').label3.choice)
         main_weight = int(sm.get_screen('drop_screen').label4.choice)
+        
+        video_length = int(sm.get_screen('drop_screen').dropcamtime.choice)
         
         drops_left = main_drops
         # update drop number and start lifting routine
@@ -719,11 +795,20 @@ class Events(Screen):
         global first_tap
         global main_height
         global Tap_Ammount 
-        global Taps_Left 
+        global Taps_Left
+        global video_length
         
         # if first tap, do process and then wait (tap interval) seconds
         # LATER, REPLACE WITH IF LOOP BASED ON IF IT HITS A FORCE NUMBER (IF IT HITS FORCE NUMBER, PULL BACK)
-        if(first_tap):
+        if ((sm.get_screen('tap_screen').start.flag == '1')):
+            sm.get_screen('tap_screen').start.flag = '0'
+            sm.get_screen('tap_screen').start.text = 'Done / Start'
+            Events.lower(self)
+            first_tap = True
+            camera.stop_preview()
+            print('stopped')
+            
+        if((first_tap) and (sm.get_screen('tap_screen').start.flag == '1')):
             first_tap = False
             print("first tap")
             sm.get_screen('tap_screen').tapleft.text = 'Drops Remaining: ' + str(Taps_Left)
@@ -732,13 +817,13 @@ class Events(Screen):
             Events.focus_camera(self)
             Events.cam_record(self)
             Events.toggle_hold_out(self)
-            time.sleep(3)  #sleep to let sensor and camera catch up
+            #time.sleep(3)  #sleep to let sensor and camera catch up
             for i in range (156): #(goes up around 4/10 cm)
                 kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)
             Events.Walk_to_threshold(self)
             Events.Save_Data(self)
-            time.sleep(30)  #sleep for an ammount to make cam record longer
-            Events.cam_stop(self)
+            time.sleep(video_length)  #sleep for an ammount to make cam record longer
+            Events.cam_stop_and_convert(self)
             
             Taps_Left = Taps_Left -1
             sm.get_screen('tap_screen').tapleft.text = 'Taps Remaining: ' + str(Taps_Left)
@@ -747,15 +832,15 @@ class Events(Screen):
             Events.Begin_Countdown(self)
             Clock.schedule_once(Events.manage_taps, 1)
             
-        elif ((first_tap == False) and (Taps_Left > 0) ):
+        elif ((first_tap == False) and (Taps_Left > 0) and (sm.get_screen('tap_screen').start.flag == '1') ):
             print ('beginning next tap')
             Events.focus_camera(self)
             Events.cam_record(self)
-            time.sleep(3)  #sleep to let sensor and camera catch up
+            #time.sleep(3)  #sleep to let sensor and camera catch up
             Events.Walk_to_threshold(self)
             Events.Save_Data(self)
-            time.sleep(30)  #sleep for an ammount to make cam record longer
-            Events.cam_stop(self)
+            time.sleep(video_length)  #sleep for an ammount to make cam record longer
+            Events.cam_stop_and_convert(self)
             
             Taps_Left = Taps_Left-1
             sm.get_screen('tap_screen').tapleft.text = 'Taps Remaining: ' + str(Taps_Left)
@@ -764,7 +849,7 @@ class Events(Screen):
             Events.Begin_Countdown(self)
             Clock.schedule_once(Events.manage_taps, 1)
         
-        elif(Taps_Left == 0):
+        elif((Taps_Left == 0) and (sm.get_screen('tap_screen').start.flag == '1')):
             Events.lower(self)
             print("Taps Complete")
             sm.get_screen('tap_screen').start.flag = '0'
@@ -790,9 +875,19 @@ class Events(Screen):
         global main_interval
         global main_drops
         global start
-        
+        global video_length
         #if this is the first drop, do drop process and then call this event again
-        if(first_drop):
+        
+        if ((sm.get_screen('drop_screen').label5.flag == '1')):
+            Events.lower(self)
+            print('stopped')
+            sm.get_screen('drop_screen').label5.flag = '0'
+            sm.get_screen('drop_screen').label5.text = 'Done/Start'
+            start = 0
+            first_drop = True
+            camera.stop_preview()
+            
+        if((first_drop) and (sm.get_screen('drop_screen').label5.flag == '1')):
             drops_left = main_drops
             first_drop = False
             print("First Drop")
@@ -803,15 +898,15 @@ class Events(Screen):
             Events.cam_record(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
-            time.sleep(3)  #sleep to let sensor and camera catch up
+            #time.sleep(3)  #sleep to let sensor and camera catch up
             Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.toggle_hold_in(self)
             Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
             Events.Save_Data(self)
-            time.sleep(30)  #sleep to make cam record longer
-            Events.cam_stop(self)
+            time.sleep(video_length)  #sleep to make cam record longer
+            Events.cam_stop_and_convert(self)
 
             # drops left update
             drops_left = drops_left-1
@@ -825,21 +920,21 @@ class Events(Screen):
             pass
 
         #if after first drop and there are drops left, run drop protocol again and schedule this function again
-        elif((first_drop == False) and (drops_left > 0)):
+        elif((first_drop == False) and (drops_left > 0) and (sm.get_screen('drop_screen').label5.flag == '1')):
             print('Starting Drop # ' +str(drops_left))
             
             #drop process
             Events.focus_camera(self)
             Events.cam_record(self)
-            time.sleep(3)  #sleep to let sensor and camera catch up
+            #time.sleep(3)  #sleep to let sensor and camera catch up
             Events.Read_Sensor(self)# <-- for now, (figure out how to make it loop constantly later (start record, stuff, stop record)
             Events.toggle_hold_in(self)
             Events.lower(self)
             Events.toggle_hold_out(self)
             Events.lift(self)
             Events.Save_Data(self)
-            time.sleep(30)  #sleep to make cam record longer
-            Events.cam_stop(self)
+            time.sleep(video_length)  #sleep to make cam record longer
+            Events.cam_stop_and_convert(self)
             print('Drop Complete!')
             
             #drops left update
@@ -854,7 +949,7 @@ class Events(Screen):
             pass
 
         #if there are no more drops, stop process
-        elif(drops_left == 0):
+        elif((drops_left == 0) and (sm.get_screen('drop_screen').label5.flag == '1')):
             print("Drops Complete")
             Events.lower(self)
             sm.get_screen('drop_screen').label5.flag = '0'
@@ -902,6 +997,8 @@ class Events(Screen):
         bus = smbus.SMBus(1)
         global Sensor_Address
         global Tap_Force
+        global m_conversion
+        global b_conversion
         
         List_Of_Values = []
         TimeArray = []
@@ -914,25 +1011,28 @@ class Events(Screen):
         while True:
             All_Data = bus.read_i2c_block_data(Sensor_Address,0x00,6)
             Sensor_Force_Value = (All_Data[4] << 8 | All_Data[5]) - 255
-            List_Of_Values.append(round((max(List_Of_Values)*(.0235184)-(0.12401313)),2))
+            List_Of_Values.append(Sensor_Force_Value)
+            Newton_value = round((max(List_Of_Values)*(m_conversion)+(b_conversion)),2)
+            #third number is correction value
             
             Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
             TimeArray.append(Time_Running)
+            time.sleep(Sensor_Time_Interval)
             Time_Running = round(Time_Running + Sensor_Time_Interval, 3)
             
             if(Time_Running > Sensor_Duration):
                 down_counter = down_counter +1
                 #move motors or bust
-                if (max(List_Of_Values) < Tap_Force):
+                if (Newton_value < Tap_Force):
                     # reset values so they arent carried over
                     List_Of_Values = []
                     TimeArray = []
                     Time_Running = 0
-                    print('moving motor down .5cm')
+                    print('moving motor down')
                     for i in range (39): #(moves around 1/10 a centimeter)
                         kit1.stepper1.onestep(direction=stepper.BACKWARD, style=stepper.DOUBLE)
                         
-                elif(max(List_Of_Values) >= Tap_Force):
+                elif(Newton_value >= Tap_Force):
                     print('threshold met, breaking loop and lifting')
                     for i in range (down_counter*39 + 156): #(reverses however many times it went down + 4/10 cm)
                         kit1.stepper1.onestep(direction=stepper.FORWARD, style=stepper.DOUBLE)
@@ -979,7 +1079,7 @@ class Events(Screen):
         time.sleep(1)
         camera.stop_preview()
         
-    #records until cam_stop is called
+    #records until cam_stop_and_convert_and_convert is called
     def cam_record(self):
         global drops_left
         global Taps_Left
@@ -997,9 +1097,25 @@ class Events(Screen):
             camera.start_recording('/home/pi/Desktop/Tap # {}.h264'.format(Taps_Left))
     
     #stops recording
-    def cam_stop(self):
+    def cam_stop_and_convert(self):
+        global drops_left
+        global Taps_Left
         camera.stop_recording()
         print('Stopped Recording')
+    
+        #convert stuff
+        if (start == 1):
+            file_h264 = ('/home/pi/Desktop/Drop{}.h264').format(drops_left)
+            file_mp4 = ('/home/pi/Desktop/Drop{}.mp4').format(drops_left)
+            command = 'MP4Box -add ' + file_h264 + " " + file_mp4
+            call([command], shell = True)
+        else:
+            file_h264 = ('/home/pi/Desktop/Tap{}.h264').format(Taps_Left)
+            file_mp4 = ('/home/pi/Desktop/Tap{}.mp4').format(Taps_Left)
+            command = 'MP4Box -add ' + file_h264 + " " + file_mp4
+            call([command], shell = True)
+            
+        print('converted')
                 
     def Read_Sensor(self):
         # setting up variables. (sensor duration effects how long the sensor reads for)
@@ -1025,6 +1141,9 @@ class Events(Screen):
                 break
         
     def Save_Data(self):
+        global m_conversion
+        global b_conversion
+        
         TimeStamp= TimeArray[List_Of_Values.index(max(List_Of_Values))]
         
         print("Highest Sensor Value = {}".format(max(List_Of_Values)))
@@ -1044,7 +1163,7 @@ class Events(Screen):
         if(sm.get_screen('drop_screen').label5.flag == '1'):
             with open("Sensor_Log.txt", "a") as WriteValues:
                 WriteValues.write(('Drop Experiment on {}\n').format(save_date.strftime("%d-%m-%Y %H:%M")))
-                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} N| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(round((max(List_Of_Values)*(.0235184)-(0.12401313)),2)), main_height, main_weight, TimeStamp, main_interval))
+                WriteValues.write(("Drop Mode: Drop # = {} | Force Value = {} N| Height = {} CM| Weight = {} GRAMS| TimeStamp = {} SECONDS| Drop Interval = {} SECONDS\n").format(drops_left, str(round((max(List_Of_Values)*(m_conversion)+(b_conversion)),2)), main_height, main_weight, TimeStamp, main_interval))
                 WriteValues.write('\n')
         List_Of_Values.clear()
         TimeArray.clear()
